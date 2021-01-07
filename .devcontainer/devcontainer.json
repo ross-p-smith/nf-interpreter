@@ -19,7 +19,7 @@
 		"cmake.configureSettings": {
 			"CMAKE_MAKE_PROGRAM":"/usr/bin/ninja"
 		},
-		"cmake.cmakePath": "/usr/bin/cmake",
+		"cmake.cmakePath": "/usr/local/bin/cmake",
 		"cmake.configureOnOpen": false
 	},
 	// Add the IDs of extensions you want installed when the container is created.
@@ -34,5 +34,5 @@
 	// Use 'postCreateCommand' to run commands after the container is created.
 	// "postCreateCommand": "terraform --version",
 	// Uncomment to connect as a non-root user. See https: //aka.ms/vscode-remote/containers/non-root.
-	,"remoteUser": "vscode"
+	//,"remoteUser": "vscode"
 }

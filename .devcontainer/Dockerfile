@@ -1,5 +1,22 @@
-#FROM gcc:10
-FROM debian:9-slim
+FROM debian:10.4-slim AS downloader
+RUN apt-get update \
+    && apt-get -y install --no-install-recommends apt-utils \
+    && apt-get install -y \
+    curl \
+    bzip2
+
+ARG GCC_URI=https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu-rm/10-2020q4/gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux.tar.bz2
+RUN mkdir -p /tmp/dc-downloads /tmp/dc-extracted/gcc /tmp/dc-extracted/cmake \
+    && curl -o /tmp/dc-downloads/gcc-arm.tar.bz2  $GCC_URI \
+    && bunzip2 -d /tmp/dc-downloads/gcc-arm.tar.bz2 \
+    && tar -xvf /tmp/dc-downloads/gcc-arm.tar -C /tmp/dc-extracted/gcc --strip-components 1
+
+ARG CMAKE_SCRIPT=https://github-production-release-asset-2e65be.s3.amazonaws.com/537699/72449280-3f8c-11eb-9e12-5bf5bf4258ea?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAIWNJYAX4CSVEH53A%2F20210107%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20210107T223214Z&X-Amz-Expires=300&X-Amz-Signature=96521d920d74366a11fd5b1a61ddc051f12fc8baec26a745d0a3055f4046f2cc&X-Amz-SignedHeaders=host&actor_id=6254153&key_id=0&repo_id=537699&response-content-disposition=attachment%3B%20filename%3Dcmake-3.19.2-Linux-x86_64.sh&response-content-type=application%2Foctet-stream
+RUN curl -o /tmp/dc-downloads/cmake.sh $CMAKE_SCRIPT \
+    && chmod +x /tmp/dc-downloads/cmake.sh \
+    && bash /tmp/dc-downloads/cmake.sh --skip-license --prefix=/tmp/dc-extracted/cmake
+
+FROM debian:10.4-slim AS devcontainer
 
 # Avoid warnings by switching to noninteractive
 ENV DEBIAN_FRONTEND=noninteractive
@@ -8,8 +25,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 ARG USERNAME=vscode
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
-COPY scripts/*.sh /tmp/
-RUN bash /tmp/non-root-user.sh "${USERNAME}" "${USER_UID}" "${USER_GID}" && rm /tmp/non-root-user.sh
 
 # Configure apt and install packages
 RUN apt-get update \
@@ -17,28 +32,20 @@ RUN apt-get update \
     && apt-get install -y \
     git \
     curl \
-    bzip2 \
-    cmake \
     ninja-build
 
-RUN mkdir -p /tmp/dc-downloads /usr/local/bin/gcc  \
-    # Change this to programmatically get the zip rather than this hardcoded link
-    # Have a look at this for reference: - https://github.com/docker-library/gcc/blob/master/10/Dockerfile
-    && curl -o /tmp/dc-downloads/gcc-arm.tar.bz2 https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu-rm/10-2020q4/gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux.tar.bz2 \
-    && bunzip2 -d /tmp/dc-downloads/gcc-arm.tar.bz2 \
-    && tar -xvf /tmp/dc-downloads/gcc-arm.tar -C /usr/local/bin/gcc --strip-components 1 \
-    # Clean up downloaded files
-    && apt-get autoremove -y \
-    && apt-get clean -y \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /tmp/dc-downloads
+RUN mkdir -p /usr/local/bin/gcc \
+    && git clone https://github.com/STMicroelectronics/STM32CubeL4.git ./sources/STM32CubeL4 \
+    && git clone --recursive https://github.com/azure-rtos/threadx.git ./sources/AzureRTOS
 
-# Save command line history 
-RUN echo "export HISTFILE=/home/$USERNAME/commandhistory/.bash_history" >> "/home/$USERNAME/.bashrc" \
-     && echo "export PROMPT_COMMAND='history -a'" >> "/home/$USERNAME/.bashrc" \
-     && mkdir -p /home/$USERNAME/commandhistory \
-     && touch /home/$USERNAME/commandhistory/.bash_history \
-     && chown -R $USERNAME /home/$USERNAME/commandhistory
+# Copy from our other container
+COPY --from=downloader /tmp/dc-extracted/gcc /usr/local/bin/gcc 
+COPY --from=downloader /tmp/dc-extracted/cmake/bin /usr/local/bin/cmake
+
+# Clean up downloaded files
+RUN apt-get autoremove -y \
+    && apt-get clean -y \
+    && rm -rf /var/lib/apt/lists/*
 
 # Switch back to dialog for any ad-hoc use of apt-get
 ENV DEBIAN_FRONTEND=dialog
